@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Shield, AlertTriangle, MapPin, Navigation, Stethoscope, RotateCcw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Shield, AlertTriangle, MapPin, Navigation, Stethoscope, RotateCcw, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 
@@ -16,14 +16,15 @@ interface Diagnosis {
 interface DiagnosisResponse {
   diagnoses: Diagnosis[];
   isInconclusive: boolean;
+  cannotNarrow?: boolean;
   disclaimer: string;
 }
 
-const urgencyColors: Record<string, { bg: string; text: string; label: string }> = {
-  emergency: { bg: "bg-destructive/10", text: "text-destructive", label: "Emergency" },
-  urgent: { bg: "bg-caution-light", text: "text-caution-foreground", label: "Urgent Care" },
-  routine: { bg: "bg-clinical-light", text: "text-clinical", label: "Routine" },
-  "self-care": { bg: "bg-success-light", text: "text-success", label: "Self-Care" },
+const urgencyConfig: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  emergency: { bg: "bg-destructive/10", text: "text-destructive", border: "border-destructive/30", label: "Emergency" },
+  urgent: { bg: "bg-caution-light", text: "text-caution-foreground", border: "border-caution/30", label: "Urgent Care" },
+  routine: { bg: "bg-clinical-light", text: "text-clinical", border: "border-clinical/30", label: "Routine" },
+  "self-care": { bg: "bg-success-light", text: "text-success", border: "border-success/30", label: "Self-Care" },
 };
 
 const Results = () => {
@@ -47,7 +48,9 @@ const Results = () => {
     );
   }
 
-  const { diagnoses, isInconclusive, disclaimer } = state.diagnosis;
+  const { diagnoses, isInconclusive, cannotNarrow, disclaimer } = state.diagnosis;
+  const topDiagnosis = diagnoses[0];
+  const isNarrowed = !isInconclusive && !cannotNarrow && diagnoses.length > 0;
 
   const handleRequestLocation = () => {
     setLocationRequested(true);
@@ -83,32 +86,44 @@ const Results = () => {
       </header>
 
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
-        {/* Inconclusive warning */}
-        {isInconclusive && (
+        {/* Inconclusive / Cannot narrow warning */}
+        {(isInconclusive || cannotNarrow) && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="rounded-2xl border-2 border-caution bg-caution-light p-6 space-y-3"
           >
             <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-caution" />
-              <h2 className="font-bold text-base">We couldn't reach a confident diagnosis</h2>
+              {isInconclusive ? (
+                <AlertTriangle className="h-5 w-5 text-caution" />
+              ) : (
+                <HelpCircle className="h-5 w-5 text-caution" />
+              )}
+              <h2 className="font-bold text-base">
+                {isInconclusive
+                  ? "We couldn't reach a confident diagnosis"
+                  : "Multiple conditions remain possible"}
+              </h2>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Based on your symptoms, we weren't able to narrow things down with enough confidence. This doesn't mean something is wrong — it means you should see a healthcare professional who can examine you properly.
+              {isInconclusive
+                ? "Based on your symptoms, we weren't able to narrow things down with enough confidence. Please see a healthcare professional for a proper evaluation."
+                : "After thorough questioning, several conditions still match your symptoms. We've ranked them below with match percentages. A healthcare professional can provide definitive testing."}
             </p>
           </motion.div>
         )}
 
         {/* Results header */}
-        {!isInconclusive && (
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight mb-2">Your Results</h1>
-            <p className="text-sm text-muted-foreground">
-              Ranked from most to least likely based on your responses.
-            </p>
-          </div>
-        )}
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight mb-2">
+            {isNarrowed ? "Your Provisional Diagnosis" : "Your Results"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {isNarrowed
+              ? `Based on your responses, the most likely match is shown below.`
+              : "Ranked from most to least likely based on your responses."}
+          </p>
+        </div>
 
         {/* Location prompt */}
         {!locationRequested && (
@@ -119,26 +134,19 @@ const Results = () => {
             className="rounded-2xl border p-5 space-y-3"
           >
             <div className="flex items-center gap-3">
-              <MapPin className="h-5 w-5 text-muted-foreground" />
+              <div className="h-9 w-9 rounded-xl bg-clinical/10 flex items-center justify-center">
+                <MapPin className="h-4 w-4 text-clinical" />
+              </div>
               <div>
                 <h3 className="text-sm font-semibold">Find care near you</h3>
                 <p className="text-xs text-muted-foreground">Allow location to see nearby facilities, or search manually.</p>
               </div>
             </div>
             <div className="flex gap-2">
-              <Button
-                onClick={handleRequestLocation}
-                size="sm"
-                className="bg-foreground text-background hover:bg-foreground/90 rounded-full text-xs"
-              >
+              <Button onClick={handleRequestLocation} size="sm" className="bg-clinical text-clinical-foreground hover:bg-clinical/90 rounded-full text-xs">
                 <Navigation className="h-3.5 w-3.5 mr-1.5" /> Use My Location
               </Button>
-              <Button
-                onClick={() => setLocationRequested(true)}
-                variant="outline"
-                size="sm"
-                className="rounded-full text-xs"
-              >
+              <Button onClick={() => setLocationRequested(true)} variant="outline" size="sm" className="rounded-full text-xs">
                 Skip
               </Button>
             </div>
@@ -148,22 +156,24 @@ const Results = () => {
         {/* Diagnosis cards */}
         <div className="space-y-4">
           {diagnoses.map((d, i) => {
-            const urgency = urgencyColors[d.urgency] || urgencyColors.routine;
+            const urgency = urgencyConfig[d.urgency] || urgencyConfig.routine;
+            const isTop = i === 0;
             return (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 + i * 0.08 }}
-                className={`rounded-2xl border p-6 space-y-4 ${i === 0 ? "border-foreground" : ""}`}
+                className={`rounded-2xl border p-6 space-y-4 ${isTop ? "border-clinical bg-clinical/[0.02]" : ""}`}
               >
-                {/* Header */}
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    {i === 0 && !isInconclusive && (
+                    {isTop && !isInconclusive && (
                       <div className="flex items-center gap-1.5 mb-2">
-                        <Shield className="h-3.5 w-3.5 text-foreground" />
-                        <span className="text-xs font-semibold uppercase tracking-wider">Provisional Diagnosis</span>
+                        <Shield className="h-3.5 w-3.5 text-clinical" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-clinical">
+                          {isNarrowed ? "Provisional Diagnosis" : "Most Likely"}
+                        </span>
                       </div>
                     )}
                     <h3 className="text-lg font-bold">{d.condition}</h3>
@@ -173,20 +183,18 @@ const Results = () => {
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${urgency.bg} ${urgency.text}`}>
                       {urgency.label}
                     </span>
-                    <span className="text-xs text-muted-foreground">{d.confidence}% match</span>
+                    <span className="text-sm font-bold text-foreground">{d.confidence}%</span>
                   </div>
                 </div>
 
                 {/* Confidence bar */}
-                <div className="space-y-1">
-                  <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
-                    <motion.div
-                      className="h-full rounded-full bg-foreground"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${d.confidence}%` }}
-                      transition={{ duration: 0.5, delay: 0.2 + i * 0.1 }}
-                    />
-                  </div>
+                <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
+                  <motion.div
+                    className={`h-full rounded-full ${isTop ? "bg-clinical" : "bg-muted-foreground/30"}`}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${d.confidence}%` }}
+                    transition={{ duration: 0.5, delay: 0.2 + i * 0.1 }}
+                  />
                 </div>
 
                 {/* Recommendations */}
@@ -195,7 +203,7 @@ const Results = () => {
                   <ul className="space-y-1.5">
                     {d.recommendations.map((r, j) => (
                       <li key={j} className="text-sm text-muted-foreground flex items-start gap-2">
-                        <span className="text-foreground mt-1.5 h-1 w-1 rounded-full bg-foreground shrink-0" />
+                        <span className="mt-1.5 h-1 w-1 rounded-full bg-clinical shrink-0" />
                         {r}
                       </li>
                     ))}
@@ -210,12 +218,8 @@ const Results = () => {
                       <span className="text-sm">{d.whereToGo}</span>
                     </div>
                     {locationRequested && (
-                      <a
-                        href={getMapUrl(d.whereToGo)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-medium text-accent hover:underline flex items-center gap-1"
-                      >
+                      <a href={getMapUrl(d.whereToGo)} target="_blank" rel="noopener noreferrer"
+                        className="text-xs font-medium text-clinical hover:underline flex items-center gap-1">
                         Find nearby <ArrowRight className="h-3 w-3" />
                       </a>
                     )}
@@ -235,17 +239,10 @@ const Results = () => {
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-3 pt-4 pb-12">
-          <Button
-            onClick={() => navigate("/assess")}
-            variant="outline"
-            className="rounded-full flex-1"
-          >
+          <Button onClick={() => navigate("/assess")} variant="outline" className="rounded-full flex-1">
             <RotateCcw className="h-4 w-4 mr-2" /> Start New Assessment
           </Button>
-          <Button
-            onClick={() => navigate("/")}
-            className="bg-foreground text-background hover:bg-foreground/90 rounded-full flex-1"
-          >
+          <Button onClick={() => navigate("/")} className="bg-foreground text-background hover:bg-foreground/90 rounded-full flex-1">
             Back to Home
           </Button>
         </div>
