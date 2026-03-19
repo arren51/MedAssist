@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, SkipForward, Stethoscope, Loader2, Brain, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, SkipForward, Stethoscope, Loader2, Brain, Sparkles, Camera, X, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { questions, getVisibleQuestions, type Question } from "@/lib/questions";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,6 +46,15 @@ const Assess = () => {
   const [tempInput, setTempInput] = useState("");
   const [tempUnit, setTempUnit] = useState<"c" | "f">("c");
 
+  // Free-text notes per question
+  const [questionNotes, setQuestionNotes] = useState<Record<string, string>>({});
+  const [followUpNotes, setFollowUpNotes] = useState<Record<string, string>>({});
+
+  // Image uploads per question
+  const [questionImages, setQuestionImages] = useState<Record<string, { file: File; preview: string }[]>>({});
+  const [followUpImages, setFollowUpImages] = useState<Record<string, { file: File; preview: string }[]>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Iterative narrowing state
   const [phase, setPhase] = useState<Phase>("static");
   const [iteration, setIteration] = useState(0);
@@ -58,7 +68,6 @@ const Assess = () => {
   const visibleQuestions = useMemo(() => getVisibleQuestions(answers), [answers]);
   const currentQuestion = visibleQuestions[currentIndex];
 
-  // Progress calculation
   const staticProgress = visibleQuestions.length > 0 ? (currentIndex / visibleQuestions.length) * 100 : 0;
   const followUpProgress = followUpQuestions.length > 0 ? (followUpIndex / followUpQuestions.length) * 100 : 0;
 
@@ -89,6 +98,58 @@ const Assess = () => {
     });
   }, []);
 
+  // Image upload handlers
+  const handleImageUpload = (questionId: string, isFollowUp: boolean) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.capture = "environment";
+    input.multiple = true;
+    input.onchange = (e) => {
+      const files = Array.from((e.target as HTMLInputElement).files || []);
+      const newImages = files.map((file) => ({
+        file,
+        preview: URL.createObjectURL(file),
+      }));
+      if (isFollowUp) {
+        setFollowUpImages((prev) => ({
+          ...prev,
+          [questionId]: [...(prev[questionId] || []), ...newImages],
+        }));
+      } else {
+        setQuestionImages((prev) => ({
+          ...prev,
+          [questionId]: [...(prev[questionId] || []), ...newImages],
+        }));
+      }
+    };
+    input.click();
+  };
+
+  const removeImage = (questionId: string, index: number, isFollowUp: boolean) => {
+    const setter = isFollowUp ? setFollowUpImages : setQuestionImages;
+    setter((prev) => {
+      const imgs = [...(prev[questionId] || [])];
+      URL.revokeObjectURL(imgs[index].preview);
+      imgs.splice(index, 1);
+      return { ...prev, [questionId]: imgs };
+    });
+  };
+
+  // Convert images to base64 for AI
+  const imagesToBase64 = async (images: { file: File; preview: string }[]): Promise<string[]> => {
+    return Promise.all(
+      images.map(
+        (img) =>
+          new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(img.file);
+          })
+      )
+    );
+  };
+
   const buildSymptomSummary = () => {
     const parts: string[] = [];
     for (const q of visibleQuestions) {
@@ -104,6 +165,11 @@ const Assess = () => {
         parts.push(`${qDef.question}: ${label}`);
       } else {
         parts.push(`${qDef.question}: ${a}`);
+      }
+      // Append free-text note
+      const note = questionNotes[q.id];
+      if (note?.trim()) {
+        parts.push(`  Additional detail: ${note.trim()}`);
       }
     }
     return parts.join("\n");
@@ -121,18 +187,42 @@ const Assess = () => {
         const label = q.options?.find((o) => o.id === a)?.label || a;
         parts.push(`${q.question}: ${label}`);
       }
+      const note = followUpNotes[q.id];
+      if (note?.trim()) {
+        parts.push(`  Additional detail: ${note.trim()}`);
+      }
     }
     return parts.join("\n");
+  };
+
+  const collectImages = async () => {
+    const allImages: string[] = [];
+    for (const imgs of Object.values(questionImages)) {
+      if (imgs.length > 0) {
+        const b64 = await imagesToBase64(imgs);
+        allImages.push(...b64);
+      }
+    }
+    for (const imgs of Object.values(followUpImages)) {
+      if (imgs.length > 0) {
+        const b64 = await imagesToBase64(imgs);
+        allImages.push(...b64);
+      }
+    }
+    return allImages;
   };
 
   const callDiagnose = async (symptomText: string, iter: number, prevDiagnoses?: Diagnosis[]) => {
     setPhase("analyzing");
     try {
+      const images = await collectImages();
+
       const { data, error } = await supabase.functions.invoke("diagnose", {
         body: {
           symptomSummary: symptomText,
           iteration: iter,
           previousDiagnoses: prevDiagnoses,
+          images: images.length > 0 ? images : undefined,
         },
       });
 
@@ -142,7 +232,6 @@ const Assess = () => {
       setCurrentDiagnoses(response.diagnoses);
 
       if (response.isNarrowed || response.cannotNarrow || response.isInconclusive || response.followUpQuestions.length === 0) {
-        // Done — go to results
         navigate("/results", {
           state: {
             diagnosis: {
@@ -155,10 +244,11 @@ const Assess = () => {
           },
         });
       } else {
-        // More questions needed
         setFollowUpQuestions(response.followUpQuestions);
         setFollowUpIndex(0);
         setFollowUpAnswers({});
+        setFollowUpNotes({});
+        setFollowUpImages({});
         setNarrowingReason(response.narrowingReason || "");
         setIteration(iter + 1);
         setAllSymptomText(symptomText);
@@ -189,8 +279,10 @@ const Assess = () => {
     const q = followUpQuestions[followUpIndex];
     if (!q) return false;
     const a = followUpAnswers[q.id];
-    if (q.type === "multi") return Array.isArray(a) && a.length > 0;
-    return !!a;
+    // Allow proceeding if they have selections OR wrote a note
+    const hasNote = !!followUpNotes[q.id]?.trim();
+    if (q.type === "multi") return (Array.isArray(a) && a.length > 0) || hasNote;
+    return !!a || hasNote;
   };
 
   const handleNextStatic = () => {
@@ -209,7 +301,6 @@ const Assess = () => {
 
   const handleNextFollowUp = () => {
     if (isLastFollowUp) {
-      // Submit follow-up answers
       const followUpText = buildFollowUpSummary();
       const fullText = allSymptomText + "\n\nAdditional information:\n" + followUpText;
       callDiagnose(fullText, iteration, currentDiagnoses);
@@ -222,7 +313,6 @@ const Assess = () => {
     if (phase === "narrowing" && followUpIndex > 0) {
       setFollowUpIndex((i) => i - 1);
     } else if (phase === "narrowing" && followUpIndex === 0) {
-      // Go back to results preview? Or just stay. Let's go to static end.
       setPhase("static");
       setCurrentIndex(visibleQuestions.length - 1);
     } else if (currentIndex === 0) {
@@ -297,16 +387,21 @@ const Assess = () => {
   const activeIndex = isFollowUp ? followUpIndex : currentIndex;
   const activeTotal = isFollowUp ? followUpQuestions.length : visibleQuestions.length;
   const activeProgress = isFollowUp ? followUpProgress : staticProgress;
+  const activeNotes = isFollowUp ? followUpNotes : questionNotes;
+  const activeImages = isFollowUp ? followUpImages : questionImages;
 
   if (!activeQuestion) return null;
 
-  // Unified question rendering
+  const currentNote = activeNotes[activeQuestion.id] || "";
+  const currentImages = activeImages[activeQuestion.id] || [];
+
+  // Render options — all follow-up questions are now multi-select
   const renderOptions = () => {
     const q = activeQuestion;
-    const qType = "type" in q ? q.type : "single";
+    const qType = isFollowUp ? "multi" : ("type" in q ? q.type : "single");
     const qOptions = "options" in q ? q.options : [];
 
-    if (qType === "multi" && qOptions) {
+    if ((qType === "multi") && qOptions) {
       return qOptions.map((opt: any) => {
         const selected = ((activeAnswers[q.id] as string[]) || []).includes(opt.id);
         return (
@@ -440,7 +535,7 @@ const Assess = () => {
       </div>
 
       {/* Question */}
-      <main className="flex-1 flex items-start justify-center px-6 pt-12 pb-24">
+      <main className="flex-1 flex items-start justify-center px-6 pt-12 pb-40">
         <div className="w-full max-w-lg">
           <AnimatePresence mode="wait">
             <motion.div
@@ -449,7 +544,7 @@ const Assess = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.25 }}
-              className="space-y-8"
+              className="space-y-6"
             >
               {/* Narrowing context banner */}
               {isFollowUp && (
@@ -493,11 +588,69 @@ const Assess = () => {
                 {activeQuestion.description && (
                   <p className="text-sm text-muted-foreground leading-relaxed">{activeQuestion.description}</p>
                 )}
+                {isFollowUp && (
+                  <p className="text-xs text-clinical/70 mt-1">Select all that apply</p>
+                )}
               </div>
 
               {/* Options */}
               <div className="space-y-3">
                 {renderOptions()}
+              </div>
+
+              {/* Optional free-text note */}
+              <div className="space-y-2 pt-2 border-t border-border/50">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Anything else to add? (optional)
+                </label>
+                <Textarea
+                  value={currentNote}
+                  onChange={(e) => {
+                    if (isFollowUp) {
+                      setFollowUpNotes((prev) => ({ ...prev, [activeQuestion.id]: e.target.value }));
+                    } else {
+                      setQuestionNotes((prev) => ({ ...prev, [activeQuestion.id]: e.target.value }));
+                    }
+                  }}
+                  placeholder="Describe in your own words…"
+                  className="min-h-[60px] rounded-xl text-sm resize-none"
+                  rows={2}
+                />
+              </div>
+
+              {/* Image upload */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Upload a photo (optional)
+                  </label>
+                  <button
+                    onClick={() => handleImageUpload(activeQuestion.id, isFollowUp)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-clinical hover:text-clinical/80 transition-colors"
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+                    Add Photo
+                  </button>
+                </div>
+                {currentImages.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {currentImages.map((img, idx) => (
+                      <div key={idx} className="relative group">
+                        <img
+                          src={img.preview}
+                          alt={`Upload ${idx + 1}`}
+                          className="h-20 w-20 object-cover rounded-xl border"
+                        />
+                        <button
+                          onClick={() => removeImage(activeQuestion.id, idx, isFollowUp)}
+                          className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           </AnimatePresence>
