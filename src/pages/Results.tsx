@@ -1,7 +1,8 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Shield, AlertTriangle, MapPin, Navigation, Stethoscope, RotateCcw, HelpCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Shield, AlertTriangle, MapPin, Navigation, Stethoscope, RotateCcw, HelpCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";
 
 interface Diagnosis {
@@ -32,6 +33,10 @@ const Results = () => {
   const navigate = useNavigate();
   const [locationRequested, setLocationRequested] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationDenied, setLocationDenied] = useState(false);
+  const [manualLocation, setManualLocation] = useState("");
+  const [showMap, setShowMap] = useState(false);
+  const [mapQuery, setMapQuery] = useState("");
 
   const state = location.state as { diagnosis: DiagnosisResponse } | null;
 
@@ -56,17 +61,54 @@ const Results = () => {
     setLocationRequested(true);
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => setUserLocation(null)
+        (pos) => {
+          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setUserLocation(loc);
+          // Auto-show map with top diagnosis facility
+          if (topDiagnosis) {
+            setMapQuery(topDiagnosis.whereToGo);
+            setShowMap(true);
+          }
+        },
+        () => {
+          setLocationDenied(true);
+        }
       );
     }
   };
 
-  const getMapUrl = (query: string) => {
+  const handleManualSearch = () => {
+    if (manualLocation.trim()) {
+      setLocationRequested(true);
+      setMapQuery(topDiagnosis?.whereToGo || "hospital");
+      setShowMap(true);
+    }
+  };
+
+  const getMapEmbedUrl = (query: string) => {
+    const baseQuery = encodeURIComponent(query);
+    if (userLocation) {
+      return `https://www.google.com/maps/embed/v1/search?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${baseQuery}&center=${userLocation.lat},${userLocation.lng}&zoom=13`;
+    }
+    if (manualLocation.trim()) {
+      return `https://www.google.com/maps/embed/v1/search?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${baseQuery}+near+${encodeURIComponent(manualLocation)}`;
+    }
+    return `https://www.google.com/maps/embed/v1/search?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${baseQuery}`;
+  };
+
+  const getMapLinkUrl = (query: string) => {
     if (userLocation) {
       return `https://www.google.com/maps/search/${encodeURIComponent(query)}/@${userLocation.lat},${userLocation.lng},14z`;
     }
+    if (manualLocation.trim()) {
+      return `https://www.google.com/maps/search/${encodeURIComponent(query + " near " + manualLocation)}`;
+    }
     return `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
+  };
+
+  const handleFindNearby = (query: string) => {
+    setMapQuery(query);
+    setShowMap(true);
   };
 
   return (
@@ -120,18 +162,18 @@ const Results = () => {
           </h1>
           <p className="text-sm text-muted-foreground">
             {isNarrowed
-              ? `Based on your responses, the most likely match is shown below.`
+              ? "Based on your responses, the most likely match is shown below."
               : "Ranked from most to least likely based on your responses."}
           </p>
         </div>
 
-        {/* Location prompt */}
+        {/* Location section */}
         {!locationRequested && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="rounded-2xl border p-5 space-y-3"
+            className="rounded-2xl border p-5 space-y-4"
           >
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-xl bg-clinical/10 flex items-center justify-center">
@@ -139,17 +181,81 @@ const Results = () => {
               </div>
               <div>
                 <h3 className="text-sm font-semibold">Find care near you</h3>
-                <p className="text-xs text-muted-foreground">Allow location to see nearby facilities, or search manually.</p>
+                <p className="text-xs text-muted-foreground">Use your location or enter an address to find nearby facilities.</p>
               </div>
             </div>
             <div className="flex gap-2">
               <Button onClick={handleRequestLocation} size="sm" className="bg-clinical text-clinical-foreground hover:bg-clinical/90 rounded-full text-xs">
                 <Navigation className="h-3.5 w-3.5 mr-1.5" /> Use My Location
               </Button>
-              <Button onClick={() => setLocationRequested(true)} variant="outline" size="sm" className="rounded-full text-xs">
-                Skip
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={manualLocation}
+                onChange={(e) => setManualLocation(e.target.value)}
+                placeholder="Or enter city, postcode, or address…"
+                className="h-9 rounded-full text-xs flex-1"
+                onKeyDown={(e) => e.key === "Enter" && handleManualSearch()}
+              />
+              <Button onClick={handleManualSearch} size="sm" variant="outline" className="rounded-full text-xs h-9" disabled={!manualLocation.trim()}>
+                <Search className="h-3.5 w-3.5 mr-1" /> Search
               </Button>
             </div>
+          </motion.div>
+        )}
+
+        {/* Location denied fallback */}
+        {locationDenied && !manualLocation.trim() && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-caution/30 bg-caution-light p-4 space-y-3"
+          >
+            <p className="text-sm text-muted-foreground">Location permission denied. Enter your location manually:</p>
+            <div className="flex gap-2">
+              <Input
+                value={manualLocation}
+                onChange={(e) => setManualLocation(e.target.value)}
+                placeholder="City, postcode, or address…"
+                className="h-9 rounded-full text-xs flex-1"
+                onKeyDown={(e) => e.key === "Enter" && handleManualSearch()}
+              />
+              <Button onClick={handleManualSearch} size="sm" className="bg-clinical text-clinical-foreground hover:bg-clinical/90 rounded-full text-xs h-9">
+                <Search className="h-3.5 w-3.5 mr-1" /> Find
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Embedded map */}
+        {showMap && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            className="rounded-2xl overflow-hidden border"
+          >
+            <div className="bg-clinical/5 p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-clinical" />
+                <span className="text-xs font-semibold">Showing: {mapQuery}</span>
+              </div>
+              <a
+                href={getMapLinkUrl(mapQuery)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-clinical hover:underline"
+              >
+                Open in Google Maps →
+              </a>
+            </div>
+            <iframe
+              src={getMapEmbedUrl(mapQuery)}
+              className="w-full h-72 border-0"
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              title="Nearby facilities map"
+            />
           </motion.div>
         )}
 
@@ -218,10 +324,12 @@ const Results = () => {
                       <span className="text-sm">{d.whereToGo}</span>
                     </div>
                     {locationRequested && (
-                      <a href={getMapUrl(d.whereToGo)} target="_blank" rel="noopener noreferrer"
-                        className="text-xs font-medium text-clinical hover:underline flex items-center gap-1">
-                        Find nearby <ArrowRight className="h-3 w-3" />
-                      </a>
+                      <button
+                        onClick={() => handleFindNearby(d.whereToGo)}
+                        className="text-xs font-medium text-clinical hover:underline flex items-center gap-1"
+                      >
+                        Show on map <ArrowRight className="h-3 w-3" />
+                      </button>
                     )}
                   </div>
                 </div>

@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { symptomSummary, iteration = 0, previousDiagnoses } = await req.json();
+    const { symptomSummary, iteration = 0, previousDiagnoses, images } = await req.json();
 
     if (!symptomSummary || typeof symptomSummary !== "string") {
       return new Response(
@@ -31,10 +31,12 @@ serve(async (req) => {
 This is iteration ${iteration} of the diagnostic process.
 ${previousDiagnoses ? `\nPrevious differential diagnoses were:\n${JSON.stringify(previousDiagnoses, null, 2)}\n\nThe patient has now answered additional questions. Re-evaluate with ALL information and narrow down further.` : ""}
 
+${images && images.length > 0 ? `\nThe patient has uploaded ${images.length} photo(s) of their symptoms. Analyze these images carefully for visual signs such as rashes, swelling, discoloration, wounds, skin conditions, eye redness, etc. Incorporate your visual analysis into the differential diagnosis.\n` : ""}
+
 CRITICAL RULES:
 1. Analyze ALL symptoms holistically and provide ranked possible diagnoses with confidence percentages.
 2. If you can confidently narrow to 1 diagnosis (top confidence >= 75% AND gap to 2nd place >= 20%), set "isNarrowed" to true. Do NOT generate follow-up questions.
-3. If multiple diagnoses remain plausible, you MUST generate 2-4 highly targeted follow-up questions designed to DIFFERENTIATE between the top 2-3 candidates. Be thorough — ask about EVERYTHING.
+3. If multiple diagnoses remain plausible, you MUST generate 3-5 highly targeted follow-up questions designed to DIFFERENTIATE between the top 2-3 candidates. Be thorough — ask about EVERYTHING.
 4. Only set "cannotNarrow" to true after iteration 6+ AND you genuinely cannot distinguish further.
 5. If the highest confidence is below 45%, set isInconclusive to true.
 6. Always recommend seeing a healthcare professional.
@@ -61,8 +63,8 @@ Each question must have:
 - id: unique string (e.g., "followup_${iteration}_1")
 - question: clear, patient-friendly text (no medical jargon)
 - description: WHY you're asking this (e.g., "This helps us tell the difference between X and Y")
-- type: "single" or "multi"
-- options: 3-6 options per question, each with {id, label, description?}
+- type: ALWAYS "multi" (users can select multiple options)
+- options: 4-6 options per question, each with {id, label, description?}. Always include an "Other / None of the above" option.
 
 You MUST respond with valid JSON:
 {
@@ -84,7 +86,7 @@ You MUST respond with valid JSON:
       "id": "string",
       "question": "string",
       "description": "string",
-      "type": "single" | "multi",
+      "type": "multi",
       "options": [{"id": "string", "label": "string", "description": "string"}]
     }
   ],
@@ -93,6 +95,30 @@ You MUST respond with valid JSON:
 }
 
 Provide 1-5 possible diagnoses ranked by likelihood. Include followUpQuestions ONLY when isNarrowed is false and cannotNarrow is false.`;
+
+    // Build messages array — support multimodal if images provided
+    const userContent: any[] = [];
+    
+    userContent.push({
+      type: "text",
+      text: `Analyze these patient-reported symptoms and ${iteration === 0 ? "provide initial differential diagnoses" : "narrow down the diagnosis based on the new information"}:\n\n${symptomSummary}`,
+    });
+
+    // Add images as base64 for multimodal analysis
+    if (images && Array.isArray(images) && images.length > 0) {
+      for (const img of images.slice(0, 4)) {
+        // img is a data URL like "data:image/jpeg;base64,..."
+        if (typeof img === "string" && img.startsWith("data:")) {
+          const [meta, base64] = img.split(",");
+          const mimeMatch = meta.match(/data:(.*?);/);
+          const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+          userContent.push({
+            type: "image_url",
+            image_url: { url: img },
+          });
+        }
+      }
+    }
 
     const response = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -103,12 +129,12 @@ Provide 1-5 possible diagnoses ranked by likelihood. Include followUpQuestions O
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: images && images.length > 0 ? "google/gemini-2.5-flash" : "google/gemini-2.5-flash",
           messages: [
             { role: "system", content: systemPrompt },
             {
               role: "user",
-              content: `Analyze these patient-reported symptoms and ${iteration === 0 ? "provide initial differential diagnoses" : "narrow down the diagnosis based on the new information"}:\n\n${symptomSummary}`,
+              content: userContent.length === 1 ? userContent[0].text : userContent,
             },
           ],
         }),
@@ -175,6 +201,11 @@ Provide 1-5 possible diagnoses ranked by likelihood. Include followUpQuestions O
     parsed.cannotNarrow = parsed.cannotNarrow ?? false;
     parsed.isInconclusive = parsed.isInconclusive ?? false;
     parsed.followUpQuestions = parsed.followUpQuestions ?? [];
+
+    // Force all follow-up questions to be multi-select
+    for (const q of parsed.followUpQuestions) {
+      q.type = "multi";
+    }
 
     return new Response(JSON.stringify(parsed), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
