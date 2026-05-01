@@ -347,13 +347,39 @@ const Results = () => {
           </p>
         </div>
 
+        {/* Save / confirm CTAs */}
+        {user && state.assessmentId && (
+          <div className="rounded-2xl border-2 border-clinical/30 bg-clinical/5 p-5 flex items-start gap-3">
+            <CheckCircle2 className="h-5 w-5 text-clinical shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold mb-1">Saved to your history</p>
+              <p className="text-xs text-muted-foreground mb-3">After your doctor visit, come back and confirm what they actually diagnosed — it makes future assessments more accurate for you.</p>
+              <Button onClick={() => navigate(`/confirm/${state.assessmentId}`)} size="sm" className="rounded-full bg-clinical text-clinical-foreground hover:bg-clinical/90 text-xs">
+                Confirm doctor's diagnosis later
+              </Button>
+            </div>
+          </div>
+        )}
+        {!user && (
+          <div className="rounded-2xl border-2 border-dashed p-5 flex items-start gap-3">
+            <UserPlus className="h-5 w-5 text-clinical shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold mb-1">Save this to your history</p>
+              <p className="text-xs text-muted-foreground mb-3">Create a free account to keep your assessments, store your medical profile, and get more accurate diagnoses over time.</p>
+              <Button onClick={() => navigate("/auth")} size="sm" className="rounded-full bg-clinical text-clinical-foreground hover:bg-clinical/90 text-xs">
+                Create free account
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-3 pt-4 pb-12">
           <Button onClick={() => navigate("/assess")} variant="outline" className="rounded-full flex-1">
             <RotateCcw className="h-4 w-4 mr-2" /> Start New Assessment
           </Button>
-          <Button onClick={() => navigate("/")} className="bg-foreground text-background hover:bg-foreground/90 rounded-full flex-1">
-            Back to Home
+          <Button onClick={() => navigate(user ? "/dashboard" : "/")} className="bg-foreground text-background hover:bg-foreground/90 rounded-full flex-1">
+            {user ? "View my history" : "Back to Home"}
           </Button>
         </div>
       </main>
