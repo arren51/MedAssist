@@ -1,14 +1,15 @@
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Shield, Clock, Heart, Stethoscope, ChevronRight, Activity, Brain } from "lucide-react";
+import { ArrowRight, Shield, Clock, Stethoscope, ChevronRight, Activity, Brain, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { useAuth } from "@/hooks/use-auth";
 
 const Landing = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Nav */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -17,9 +18,20 @@ const Landing = () => {
             </div>
             <span className="font-semibold text-sm tracking-tight">MedAssist</span>
           </div>
-          <Button onClick={() => navigate("/assess")} variant="ghost" size="sm" className="text-sm font-medium">
-            Start Assessment <ChevronRight className="h-3.5 w-3.5 ml-1" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {user ? (
+              <Button onClick={() => navigate("/dashboard")} variant="ghost" size="sm" className="text-sm font-medium">
+                <History className="h-3.5 w-3.5 mr-1.5" /> My history
+              </Button>
+            ) : (
+              <Button onClick={() => navigate("/auth")} variant="ghost" size="sm" className="text-sm font-medium">
+                Sign in
+              </Button>
+            )}
+            <Button onClick={() => navigate("/assess")} variant="ghost" size="sm" className="text-sm font-medium">
+              Start <ChevronRight className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          </div>
         </div>
       </nav>
 
