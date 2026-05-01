@@ -60,6 +60,7 @@ This is iteration ${iteration} of the diagnostic process.
 ${previousDiagnoses ? `\nPrevious differential diagnoses were:\n${JSON.stringify(previousDiagnoses, null, 2)}\n\nThe patient has now answered additional questions. Re-evaluate with ALL information and narrow down further.` : ""}
 
 ${images && images.length > 0 ? `\nThe patient has uploaded ${images.length} photo(s) of their symptoms. Analyze these images carefully for visual signs such as rashes, swelling, discoloration, wounds, skin conditions, eye redness, etc. Incorporate your visual analysis into the differential diagnosis.\n` : ""}
+${personalContext ? `\n${personalContext}\n\nFactor this patient's profile and past history into your differential. Adjust likelihood based on age, sex, chronic conditions, allergies, current medications, and prior doctor-confirmed diagnoses.\n` : ""}
 
 CRITICAL RULES:
 1. Analyze ALL symptoms holistically and provide ranked possible diagnoses with confidence percentages.
