@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { symptomSummary, iteration = 0, previousDiagnoses, images } = await req.json();
+    const { symptomSummary, iteration = 0, previousDiagnoses, images, userProfile, pastAssessments } = await req.json();
 
     if (!symptomSummary || typeof symptomSummary !== "string") {
       return new Response(
@@ -24,6 +24,34 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
+    }
+
+    // Build personalization context from profile + past confirmed diagnoses
+    let personalContext = "";
+    if (userProfile && typeof userProfile === "object") {
+      const p = userProfile as any;
+      const lines: string[] = [];
+      if (p.date_of_birth) {
+        const age = Math.floor((Date.now() - new Date(p.date_of_birth).getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+        lines.push(`Age: ${age}`);
+      }
+      if (p.biological_sex) lines.push(`Biological sex: ${p.biological_sex}`);
+      if (p.height_cm) lines.push(`Height: ${p.height_cm} cm`);
+      if (p.weight_kg) lines.push(`Weight: ${p.weight_kg} kg`);
+      if (p.chronic_conditions?.length) lines.push(`Chronic conditions: ${p.chronic_conditions.join(", ")}`);
+      if (p.allergies?.length) lines.push(`Allergies: ${p.allergies.join(", ")}`);
+      if (p.medications?.length) lines.push(`Current medications: ${p.medications.join(", ")}`);
+      if (p.notes) lines.push(`Other notes: ${p.notes}`);
+      if (lines.length) personalContext += `\n\nPATIENT PROFILE:\n${lines.join("\n")}`;
+    }
+    if (Array.isArray(pastAssessments) && pastAssessments.length > 0) {
+      const lines = pastAssessments.slice(0, 10).map((a: any) => {
+        const date = a.created_at ? new Date(a.created_at).toISOString().slice(0, 10) : "?";
+        const ai = a.top_diagnosis || "inconclusive";
+        const confirmed = a.confirmed_diagnosis || a.actual_diagnosis_text;
+        return `- ${date}: AI suggested "${ai}"${confirmed ? `, doctor confirmed "${confirmed}"` : " (no doctor confirmation)"}`;
+      });
+      personalContext += `\n\nPAST MEDICAL HISTORY (this patient's previous assessments):\n${lines.join("\n")}\n\nUse this history to bias toward recurring conditions and consider chronic patterns. Doctor-confirmed diagnoses are HIGH-WEIGHT signals.`;
     }
 
     const systemPrompt = `You are an expert medical triage assistant AI performing a thorough diagnostic consultation. Your job is to analyze patient symptoms and iteratively narrow down to a SINGLE diagnosis through exhaustive follow-up questioning — like a real doctor would.
