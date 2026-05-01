@@ -1,9 +1,10 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Shield, AlertTriangle, MapPin, Navigation, Stethoscope, RotateCcw, HelpCircle, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Shield, AlertTriangle, MapPin, Navigation, Stethoscope, RotateCcw, HelpCircle, Search, CheckCircle2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Diagnosis {
   condition: string;
@@ -31,6 +32,7 @@ const urgencyConfig: Record<string, { bg: string; text: string; border: string; 
 const Results = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [locationRequested, setLocationRequested] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
@@ -38,7 +40,7 @@ const Results = () => {
   const [showMap, setShowMap] = useState(false);
   const [mapQuery, setMapQuery] = useState("");
 
-  const state = location.state as { diagnosis: DiagnosisResponse } | null;
+  const state = location.state as { diagnosis: DiagnosisResponse; assessmentId?: string } | null;
 
   if (!state?.diagnosis) {
     return (
