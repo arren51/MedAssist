@@ -14,7 +14,140 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      assessment_outcomes: {
+        Row: {
+          accuracy_rating: number | null
+          actual_diagnosis_text: string | null
+          assessment_id: string
+          confirmed_diagnosis_from_list: string | null
+          created_at: string
+          doctor_notes: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accuracy_rating?: number | null
+          actual_diagnosis_text?: string | null
+          assessment_id: string
+          confirmed_diagnosis_from_list?: string | null
+          created_at?: string
+          doctor_notes?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          accuracy_rating?: number | null
+          actual_diagnosis_text?: string | null
+          assessment_id?: string
+          confirmed_diagnosis_from_list?: string | null
+          created_at?: string
+          doctor_notes?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_outcomes_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: true
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessments: {
+        Row: {
+          created_at: string
+          diagnoses: Json
+          id: string
+          images_count: number
+          is_inconclusive: boolean
+          iterations: number
+          symptom_summary: string
+          top_confidence: number | null
+          top_diagnosis: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          diagnoses?: Json
+          id?: string
+          images_count?: number
+          is_inconclusive?: boolean
+          iterations?: number
+          symptom_summary: string
+          top_confidence?: number | null
+          top_diagnosis?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          diagnoses?: Json
+          id?: string
+          images_count?: number
+          is_inconclusive?: boolean
+          iterations?: number
+          symptom_summary?: string
+          top_confidence?: number | null
+          top_diagnosis?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          allergies: string[] | null
+          biological_sex: string | null
+          chronic_conditions: string[] | null
+          created_at: string
+          date_of_birth: string | null
+          display_name: string | null
+          height_cm: number | null
+          id: string
+          medications: string[] | null
+          notes: string | null
+          updated_at: string
+          user_id: string
+          weight_kg: number | null
+        }
+        Insert: {
+          allergies?: string[] | null
+          biological_sex?: string | null
+          chronic_conditions?: string[] | null
+          created_at?: string
+          date_of_birth?: string | null
+          display_name?: string | null
+          height_cm?: number | null
+          id?: string
+          medications?: string[] | null
+          notes?: string | null
+          updated_at?: string
+          user_id: string
+          weight_kg?: number | null
+        }
+        Update: {
+          allergies?: string[] | null
+          biological_sex?: string | null
+          chronic_conditions?: string[] | null
+          created_at?: string
+          date_of_birth?: string | null
+          display_name?: string | null
+          height_cm?: number | null
+          id?: string
+          medications?: string[] | null
+          notes?: string | null
+          updated_at?: string
+          user_id?: string
+          weight_kg?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
