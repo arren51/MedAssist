@@ -3,9 +3,15 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/hooks/use-auth";
 import Landing from "./pages/Landing";
 import Assess from "./pages/Assess";
 import Results from "./pages/Results";
+import Auth from "./pages/Auth";
+import Dashboard from "./pages/Dashboard";
+import Profile from "./pages/Profile";
+import ConfirmOutcome from "./pages/ConfirmOutcome";
+import AssessmentDetail from "./pages/AssessmentDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -16,12 +22,19 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/assess" element={<Assess />} />
-          <Route path="/results" element={<Results />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/assess" element={<Assess />} />
+            <Route path="/results" element={<Results />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/confirm/:id" element={<ConfirmOutcome />} />
+            <Route path="/assessment/:id" element={<AssessmentDetail />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

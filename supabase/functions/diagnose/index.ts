@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { symptomSummary, iteration = 0, previousDiagnoses, images } = await req.json();
+    const { symptomSummary, iteration = 0, previousDiagnoses, images, userProfile, pastAssessments } = await req.json();
 
     if (!symptomSummary || typeof symptomSummary !== "string") {
       return new Response(
@@ -26,12 +26,41 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
+    // Build personalization context from profile + past confirmed diagnoses
+    let personalContext = "";
+    if (userProfile && typeof userProfile === "object") {
+      const p = userProfile as any;
+      const lines: string[] = [];
+      if (p.date_of_birth) {
+        const age = Math.floor((Date.now() - new Date(p.date_of_birth).getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+        lines.push(`Age: ${age}`);
+      }
+      if (p.biological_sex) lines.push(`Biological sex: ${p.biological_sex}`);
+      if (p.height_cm) lines.push(`Height: ${p.height_cm} cm`);
+      if (p.weight_kg) lines.push(`Weight: ${p.weight_kg} kg`);
+      if (p.chronic_conditions?.length) lines.push(`Chronic conditions: ${p.chronic_conditions.join(", ")}`);
+      if (p.allergies?.length) lines.push(`Allergies: ${p.allergies.join(", ")}`);
+      if (p.medications?.length) lines.push(`Current medications: ${p.medications.join(", ")}`);
+      if (p.notes) lines.push(`Other notes: ${p.notes}`);
+      if (lines.length) personalContext += `\n\nPATIENT PROFILE:\n${lines.join("\n")}`;
+    }
+    if (Array.isArray(pastAssessments) && pastAssessments.length > 0) {
+      const lines = pastAssessments.slice(0, 10).map((a: any) => {
+        const date = a.created_at ? new Date(a.created_at).toISOString().slice(0, 10) : "?";
+        const ai = a.top_diagnosis || "inconclusive";
+        const confirmed = a.confirmed_diagnosis || a.actual_diagnosis_text;
+        return `- ${date}: AI suggested "${ai}"${confirmed ? `, doctor confirmed "${confirmed}"` : " (no doctor confirmation)"}`;
+      });
+      personalContext += `\n\nPAST MEDICAL HISTORY (this patient's previous assessments):\n${lines.join("\n")}\n\nUse this history to bias toward recurring conditions and consider chronic patterns. Doctor-confirmed diagnoses are HIGH-WEIGHT signals.`;
+    }
+
     const systemPrompt = `You are an expert medical triage assistant AI performing a thorough diagnostic consultation. Your job is to analyze patient symptoms and iteratively narrow down to a SINGLE diagnosis through exhaustive follow-up questioning — like a real doctor would.
 
 This is iteration ${iteration} of the diagnostic process.
 ${previousDiagnoses ? `\nPrevious differential diagnoses were:\n${JSON.stringify(previousDiagnoses, null, 2)}\n\nThe patient has now answered additional questions. Re-evaluate with ALL information and narrow down further.` : ""}
 
 ${images && images.length > 0 ? `\nThe patient has uploaded ${images.length} photo(s) of their symptoms. Analyze these images carefully for visual signs such as rashes, swelling, discoloration, wounds, skin conditions, eye redness, etc. Incorporate your visual analysis into the differential diagnosis.\n` : ""}
+${personalContext ? `\n${personalContext}\n\nFactor this patient's profile and past history into your differential. Adjust likelihood based on age, sex, chronic conditions, allergies, current medications, and prior doctor-confirmed diagnoses.\n` : ""}
 
 CRITICAL RULES:
 1. Analyze ALL symptoms holistically and provide ranked possible diagnoses with confidence percentages.
