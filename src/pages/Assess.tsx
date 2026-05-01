@@ -217,12 +217,34 @@ const Assess = () => {
     try {
       const images = await collectImages();
 
+      // On first iteration, pull user profile + past assessments to personalize
+      let userProfile: any = undefined;
+      let pastAssessments: any[] = [];
+      if (iter === 0) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const [{ data: prof }, { data: past }] = await Promise.all([
+            supabase.from("profiles").select("date_of_birth,biological_sex,height_cm,weight_kg,chronic_conditions,allergies,medications,notes").eq("user_id", user.id).maybeSingle(),
+            supabase.from("assessments").select("created_at,top_diagnosis,assessment_outcomes(confirmed_diagnosis_from_list,actual_diagnosis_text)").eq("user_id", user.id).order("created_at", { ascending: false }).limit(10),
+          ]);
+          userProfile = prof || undefined;
+          pastAssessments = (past || []).map((a: any) => ({
+            created_at: a.created_at,
+            top_diagnosis: a.top_diagnosis,
+            confirmed_diagnosis: a.assessment_outcomes?.[0]?.confirmed_diagnosis_from_list,
+            actual_diagnosis_text: a.assessment_outcomes?.[0]?.actual_diagnosis_text,
+          }));
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke("diagnose", {
         body: {
           symptomSummary: symptomText,
           iteration: iter,
           previousDiagnoses: prevDiagnoses,
           images: images.length > 0 ? images : undefined,
+          userProfile,
+          pastAssessments: pastAssessments.length ? pastAssessments : undefined,
         },
       });
 
@@ -232,6 +254,24 @@ const Assess = () => {
       setCurrentDiagnoses(response.diagnoses);
 
       if (response.isNarrowed || response.cannotNarrow || response.isInconclusive || response.followUpQuestions.length === 0) {
+        // Save assessment if user is logged in
+        let assessmentId: string | undefined;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const top = response.diagnoses[0];
+          const { data: saved } = await supabase.from("assessments").insert({
+            user_id: user.id,
+            symptom_summary: symptomText,
+            diagnoses: response.diagnoses as any,
+            top_diagnosis: top?.condition || null,
+            top_confidence: top?.confidence ?? null,
+            is_inconclusive: !!response.isInconclusive,
+            iterations: iter + 1,
+            images_count: images.length,
+          }).select("id").maybeSingle();
+          assessmentId = saved?.id;
+        }
+
         navigate("/results", {
           state: {
             diagnosis: {
@@ -241,6 +281,7 @@ const Assess = () => {
               disclaimer: response.disclaimer,
             },
             answers,
+            assessmentId,
           },
         });
       } else {
