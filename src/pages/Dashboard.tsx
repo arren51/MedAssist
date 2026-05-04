@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
+import { HealthInsights } from "@/components/HealthInsights";
 
 interface Assessment {
   id: string;
