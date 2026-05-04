@@ -77,6 +77,8 @@ const Dashboard = () => {
           </Button>
         </motion.div>
 
+        {!fetching && assessments.length > 0 && <HealthInsights userId={user.id} refreshKey={assessments.length} />}
+
         {/* History */}
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Past assessments</h2>
