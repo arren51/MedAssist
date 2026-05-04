@@ -112,10 +112,23 @@ const Dashboard = () => {
                             </span>
                           )}
                         </div>
-                        <h3 className="font-semibold text-base mb-1">
-                          {a.top_diagnosis || "Inconclusive assessment"}
-                          {a.top_confidence != null && <span className="text-muted-foreground font-normal text-sm ml-2">· {Number(a.top_confidence).toFixed(0)}% match</span>}
-                        </h3>
+                        {(() => {
+                          const confirmed = a.outcome?.actual_diagnosis_text || (a.outcome?.confirmed_diagnosis_from_list && a.outcome.confirmed_diagnosis_from_list !== "__none__" ? a.outcome.confirmed_diagnosis_from_list : null);
+                          const display = confirmed || a.top_diagnosis || "Inconclusive assessment";
+                          return (
+                            <h3 className="font-semibold text-base mb-1">
+                              {display}
+                              {confirmed ? (
+                                <span className="text-success font-normal text-xs ml-2">· doctor confirmed</span>
+                              ) : a.top_confidence != null ? (
+                                <span className="text-muted-foreground font-normal text-sm ml-2">· {Number(a.top_confidence).toFixed(0)}% match</span>
+                              ) : null}
+                              {confirmed && a.top_diagnosis && a.top_diagnosis !== confirmed && (
+                                <div className="text-xs text-muted-foreground font-normal mt-0.5">AI initially guessed: {a.top_diagnosis}</div>
+                              )}
+                            </h3>
+                          );
+                        })()}
                         <p className="text-xs text-muted-foreground line-clamp-2">{a.symptom_summary.split("\n")[0]}</p>
                       </div>
                       <div className="flex flex-col gap-2 shrink-0">
